@@ -754,12 +754,13 @@ function refreshShare(){ if (current === 'share'){ var d = getDraw(currentDrawId
 })(0);
 // On a normal website (like GitHub Pages) caches can hold an old copy for a few minutes,
 // so fetch a fresh copy of this page and use its draws if they're newer.
+var DRAW_FILE = 'draw.json';
 function refreshPublicFromServer(){
   if (!ON_WEB || !window.fetch) return Promise.resolve(false);
-  return fetch(location.pathname + '?fresh=' + Date.now(), { cache: 'no-store' }).then(function(r){ return r.ok ? r.text() : ''; }).then(function(txt){
-    var m = txt.match(/<script type="application\/json" id="public-draws">([\s\S]*?)<\/script>/);
-    if (!m) return false;
-    var fresh = JSON.parse(m[1] || '[]') || [];
+  return fetch(new URL(DRAW_FILE, location.href).href + '?fresh=' + Date.now(), { cache: 'no-store' }).then(function(r){ return r.ok ? r.text() : null; }).then(function(txt){
+    if (txt == null) return false;
+    var fresh = JSON.parse(txt || '[]');
+    if (!Array.isArray(fresh)) return false;
     if (JSON.stringify(fresh) === JSON.stringify(PUBLIC)) return false;
     PUBLIC = fresh;
     if (current === 'home') renderHome(); else if (current === 'share') renderShare();
@@ -769,19 +770,19 @@ function refreshPublicFromServer(){
 function hostedLink(){ return IN_CLAUDE ? PAGE_URL : (ON_WEB ? location.origin + location.pathname : ''); }
 // Inside Claude without the ability to update the page, fall back to personal links.
 function canSend(d){ return !!linkOf(d) && (pubState(d) === 'live' || artifactState === 'no'); }
-function downloadSite(html, d, kind){
+function downloadDrawFile(list, d, kind){
   var dd = getDraw(d.id);
   if (dd){ dd.pub = dd.pub || {}; dd.pub.uploadKind = kind; dd.pub.uploadStamp = dd.createdAt; dd.pub.uploadAt = Date.now(); putDraw(dd); }
   save(K_RETURN, { id: d.id, t: Date.now() });
-  var url = URL.createObjectURL(new Blob([html], { type: 'text/html' })), a = document.createElement('a');
-  a.href = url; a.download = 'index.html'; document.body.appendChild(a); a.click(); a.remove();
+  var url = URL.createObjectURL(new Blob([JSON.stringify(list, null, 1)], { type: 'application/json' })), a = document.createElement('a');
+  a.href = url; a.download = DRAW_FILE; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){ URL.revokeObjectURL(url); }, 15000);
   if (dd) renderStrips(dd);
   return Promise.resolve(true);
 }
 function publishPublic(list, d, statusEl, busyText, kind){
+  if (!IN_CLAUDE) return downloadDrawFile(list, d, kind || 'on');
   var html = buildHtml(list);
-  if (!IN_CLAUDE) return downloadSite(html, d, kind || 'on');
   if (!artifactApi || !artifactApi.publish){
     statusEl.textContent = 'Only the person who made this page can update it. Open it in Claude, signed in as them.';
     return Promise.resolve(false);
@@ -836,8 +837,8 @@ function groupMessage(d){
   return m;
 }
 var UPLOAD_STEPS = '<ol class="how" style="margin-top:10px">' +
-  '<li>Open your repository on GitHub.</li>' +
-  '<li>Tap <b>Add file</b>, then <b>Upload files</b>, and choose the <b>index.html</b> you just downloaded. It replaces the old one.</li>' +
+  '<li>Find <b>draw.json</b> in your Downloads. If your computer called it something like “draw (1).json”, rename it to exactly <b>draw.json</b>.</li>' +
+  '<li>Open your repository on GitHub. Tap <b>Add file</b>, then <b>Upload files</b>, and drag in draw.json. It goes next to index.html, or replaces the old draw.json.</li>' +
   '<li>Tap <b>Commit changes</b>.</li>' +
   '<li>Wait a minute, then tap <b>Check my site</b>. GitHub can take a few minutes to update.</li></ol>' +
   '<div class="row"><button class="btn btn-primary btn-small" data-action="check-site">Check my site</button></div>';
@@ -850,14 +851,14 @@ function renderPublicBox(d){
   }
   if (web && up === 'on' && d.pub.uploadStamp === d.createdAt){
     box.innerHTML = '<h3>Now upload the file to GitHub</h3>' +
-      '<p>Your site file has downloaded with the draw locked inside.</p>' + UPLOAD_STEPS +
-      '<button class="linklike small" data-action="pub-on">Download the file again</button>' +
+      '<p>draw.json has downloaded with the draw locked inside. Nobody can see the matches in it.</p>' + UPLOAD_STEPS +
+      '<button class="linklike small" data-action="pub-on">Download draw.json again</button>' +
       '<p class="pub-status" id="pub-status" role="status"></p>';
     return;
   }
   if (web && up === 'off'){
     box.innerHTML = '<h3>Upload the file to take the draw off</h3>' +
-      '<p>Your site file has downloaded without this draw in it.</p>' + UPLOAD_STEPS +
+      '<p>draw.json has downloaded without this draw in it.</p>' + UPLOAD_STEPS +
       '<p class="pub-status" id="pub-status" role="status"></p>';
     return;
   }
@@ -870,15 +871,15 @@ function renderPublicBox(d){
   } else if (st === 'stale'){
     box.innerHTML = '<h3>' + (web ? 'Your site' : 'The public page') + ' has an older draw</h3>' +
       '<p>You changed the names or drew again. Put this draw up so everyone’s code matches their new message.</p>' +
-      '<button class="btn btn-primary btn-block" data-action="pub-on">' + (web ? 'Download the updated site file' : 'Update the public page') + '</button>' +
+      '<button class="btn btn-primary btn-block" data-action="pub-on">' + (web ? 'Download the new draw.json' : 'Update the public page') + '</button>' +
       '<p class="pub-status" id="pub-status" role="status"></p>';
   } else if (IN_CLAUDE && artifactState === 'no'){
     box.innerHTML = '<h3>Personal links instead of codes</h3>' +
       '<p>This page can’t put the draw up from here, so the messages below send each person a personal link instead.</p>';
   } else if (web){
     box.innerHTML = '<h3>First, put the draw on your site</h3>' +
-      '<p>Download your site file with the draw locked inside, then upload it to GitHub in place of the old one. Everyone then uses the same link and types in their own 4-digit code.</p>' +
-      '<button class="btn btn-primary btn-block" data-action="pub-on">Download the updated site file</button>' +
+      '<p>Download draw.json with the draw locked inside and upload it to GitHub next to index.html. Everyone then uses the same link and types in their own 4-digit code.</p>' +
+      '<button class="btn btn-primary btn-block" data-action="pub-on">Download draw.json</button>' +
       '<p class="pub-status" id="pub-status" role="status"></p>';
   } else {
     box.innerHTML = '<h3>First, put the draw on the public page</h3>' +
