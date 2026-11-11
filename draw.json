@@ -1,0 +1,22 @@
+[
+ {
+  "id": "dmwck2izacvno",
+  "v": 1,
+  "stamp": 1794427949206,
+  "name": "Test",
+  "budget": "200",
+  "date": "2026-12-25",
+  "people": [
+   "Jaden",
+   "Anje",
+   "jason",
+   "mel"
+  ],
+  "locks": {
+   "Jaden": "y4JH1ASw5AN5emah.CLWgBEz5rKJOuEuVjqd5byZeMeo8O8RUsO5Z",
+   "Anje": "AHo1M6G3I3J/1C36.Z2ox9QxwC48aIXEis3RRDNZW8YNMCMbP8KsIYgY=",
+   "jason": "SSvdOFS4hpdj4v+x.FWRgflGcUyswiUkCymVgXp24+yXXKNnxQzkDhT4=",
+   "mel": "hGnAdVkRPjFWf10C.qmgZXusiogm2LOAX7gHcYRAOOoh04sfq+83Xbw=="
+  }
+ }
+]
