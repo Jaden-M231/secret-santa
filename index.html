@@ -769,7 +769,8 @@ function refreshPublicFromServer(){
 }
 function hostedLink(){ return IN_CLAUDE ? PAGE_URL : (ON_WEB ? location.origin + location.pathname : ''); }
 // Inside Claude without the ability to update the page, fall back to personal links.
-function canSend(d){ return !!linkOf(d) && (pubState(d) === 'live' || artifactState === 'no'); }
+function usingLinks(d){ return d.mode === 'links' && pubState(d) !== 'live'; }
+function canSend(d){ return !!linkOf(d) && (pubState(d) === 'live' || artifactState === 'no' || usingLinks(d)); }
 function downloadDrawFile(list, d, kind){
   var dd = getDraw(d.id);
   if (dd){ dd.pub = dd.pub || {}; dd.pub.uploadKind = kind; dd.pub.uploadStamp = dd.createdAt; dd.pub.uploadAt = Date.now(); putDraw(dd); }
@@ -845,21 +846,29 @@ var UPLOAD_STEPS = '<ol class="how" style="margin-top:10px">' +
 function renderPublicBox(d){
   var box = $('#public-box'), st = pubState(d), web = !IN_CLAUDE, up = d.pub && d.pub.uploadKind;
   var where = web ? 'your site' : 'the public page';
+  var LINKS_OFFER = '<p class="small" style="margin-top:14px"><b>Or skip ' + (web ? 'the upload' : 'this step') + ':</b> send each person a personal link with their match hidden inside. There’s nothing to put up, but no shared page with everyone’s names.</p>' +
+    '<button class="linklike small" data-action="use-links">Send personal links instead</button>';
   // An upload finished: the page now shows what was uploaded.
   if (up && ((up === 'on' && st === 'live') || (up === 'off' && !publicEntry(d.id)))){
     delete d.pub.uploadKind; delete d.pub.uploadAt; delete d.pub.uploadStamp; putDraw(d); save(K_RETURN, null); up = null;
   }
-  if (web && up === 'on' && d.pub.uploadStamp === d.createdAt){
+  if (web && up === 'on' && d.pub.uploadStamp === d.createdAt && d.mode !== 'links'){
     box.innerHTML = '<h3>Now upload the file to GitHub</h3>' +
       '<p>draw.json has downloaded with the draw locked inside. Nobody can see the matches in it.</p>' + UPLOAD_STEPS +
       '<button class="linklike small" data-action="pub-on">Download draw.json again</button>' +
-      '<p class="pub-status" id="pub-status" role="status"></p>';
+      '<p class="pub-status" id="pub-status" role="status"></p>' + LINKS_OFFER;
     return;
   }
   if (web && up === 'off'){
     box.innerHTML = '<h3>Upload the file to take the draw off</h3>' +
       '<p>draw.json has downloaded without this draw in it.</p>' + UPLOAD_STEPS +
       '<p class="pub-status" id="pub-status" role="status"></p>';
+    return;
+  }
+  if (usingLinks(d)){
+    box.innerHTML = '<h3>Sending personal links</h3>' +
+      '<p>Each WhatsApp message has that person’s own link with their match hidden inside. They tap it and see who they’re buying for. Nothing to upload.</p>' +
+      '<button class="linklike small" data-action="use-codes">Use one link with 4-digit codes instead</button>';
     return;
   }
   if (st === 'live'){
@@ -880,12 +889,12 @@ function renderPublicBox(d){
     box.innerHTML = '<h3>First, put the draw on your site</h3>' +
       '<p>Download draw.json with the draw locked inside and upload it to GitHub next to index.html. Everyone then uses the same link and types in their own 4-digit code.</p>' +
       '<button class="btn btn-primary btn-block" data-action="pub-on">Download draw.json</button>' +
-      '<p class="pub-status" id="pub-status" role="status"></p>';
+      '<p class="pub-status" id="pub-status" role="status"></p>' + LINKS_OFFER;
   } else {
     box.innerHTML = '<h3>First, put the draw on the public page</h3>' +
       '<p>Everyone uses the same link, taps their name and types in a 4-digit code. Each person’s code goes in their own WhatsApp message.</p>' +
       '<button class="btn btn-primary btn-block" data-action="pub-on">Put the draw on the public page</button>' +
-      '<p class="pub-status" id="pub-status" role="status"></p>';
+      '<p class="pub-status" id="pub-status" role="status"></p>' + LINKS_OFFER;
   }
 }
 
@@ -990,7 +999,7 @@ function renderNext(d){
     '<p>' + left + ' of ' + d.people.length + ' still to send. ' +
     (hasNum ? 'WhatsApp opens their chat with the message ready. Tap send, then come back here for the next person.'
             : 'There’s no number for ' + esc(next) + ', so WhatsApp will ask you to pick the chat.') + '</p>' +
-    (pubState(d) === 'live' ? '' : '<p class="warn">This copy of the page can’t use 4-digit codes, so each message has a personal link instead.</p>') +
+    (pubState(d) === 'live' || usingLinks(d) ? '' : '<p class="warn">This copy of the page can’t use 4-digit codes, so each message has a personal link instead.</p>') +
     '<a class="btn btn-wa btn-block" href="' + esc(waHref(d, next)) + '" target="_blank" rel="noopener" data-action="wa" data-name="' + esc(next) + '">Send ' + esc(next) + '’s message on WhatsApp</a>';
 }
 function markSent(name, later){
@@ -1345,6 +1354,12 @@ document.addEventListener('click', function(e){
       el.disabled = true;
       publishPublic(PUBLIC.filter(function(x){ return x.id !== d.id; }), d, $('#pub-status'), 'Taking the draw off the public page…', 'off')
         .then(function(ok){ if (!ok) el.disabled = false; });
+      break;
+    case 'use-links': case 'use-codes':
+      d = getDraw(currentDrawId); if (!d) break;
+      if (a === 'use-links'){ d.mode = 'links'; if (d.pub){ delete d.pub.uploadKind; delete d.pub.uploadAt; delete d.pub.uploadStamp; } save(K_RETURN, null); }
+      else delete d.mode;
+      putDraw(d); renderStrips(d);
       break;
     case 'check-site':
       el.disabled = true; el.textContent = 'Checking…';
