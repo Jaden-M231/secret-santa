@@ -272,9 +272,9 @@ textarea.field{min-height:150px;font-size:.95rem;resize:vertical}
         <svg class="twine" viewBox="0 0 60 120" aria-hidden="true"><path class="r" d="M17 120 C 2 90, 40 70, 22 40 S 8 8, 30 0"/><path class="w" d="M17 120 C 2 90, 40 70, 22 40 S 8 8, 30 0"/><path class="r" d="M17 120 C 34 92, 0 66, 14 36 S 46 10, 40 0"/><path class="w" d="M17 120 C 34 92, 0 66, 14 36 S 46 10, 40 0"/></svg>
       </div>
       <h1 tabindex="-1">Secret Santa</h1>
-      <p class="lede">Put everyone's names in the hat. Each person sees only who they're buying for, and it stays saved on their phone.</p>
+      <p class="lede" id="home-lede" hidden></p>
       <div id="home-public" hidden></div>
-      <div class="row">
+      <div class="row" id="home-actions">
         <button class="btn btn-primary" data-action="new-draw">Start a draw</button>
         <button class="btn" data-action="go-code">I got a code</button>
       </div>
@@ -606,8 +606,24 @@ function renderHomePublic(){
   }).join('');
   hp.hidden = false;
 }
+var K_GUEST = 'santa.guest.v1';
+function markGuest(){ save(K_GUEST, true); }
+// Invitees get a simple page: their tag and the names. Organisers (and #start) get the full site.
+function isGuestView(){
+  if ((location.hash || '') === '#start') return false;
+  if (load(K_DRAWS, []).length || (draft && draft.people && draft.people.length)) return false;
+  return !!load(K_GUEST, false) || PUBLIC.length > 0;
+}
 function renderHome(){
   renderHomePublic();
+  var guest = isGuestView(), hasTags = load(K_TAGS, []).length > 0;
+  $('#home-actions').hidden = guest;
+  $('#how').hidden = guest || PUBLIC.length > 0;
+  $('#home-lede').hidden = !guest;
+  $('#home-lede').textContent = !guest ? ''
+    : PUBLIC.length ? 'Tap your name below to see who you’re buying for.'
+    : hasTags ? 'Tap your tag below to see who you’re buying for.'
+    : 'Open the link from your Secret Santa message to see who you’re buying for.';
   var tags = load(K_TAGS, []), draws = load(K_DRAWS, []);
   var ht = $('#home-tags'), hd = $('#home-draws');
   if (tags.length){
@@ -1260,6 +1276,7 @@ function submitPubCode(){
       $('#pub-code').value = ''; $('#pub-code').focus(); return;
     }
     closeDialog();
+    markGuest();
     openReveal({ code: 'pub-' + ctx.pd.id + '-' + ctx.name, giver: ctx.name, recipient: r, group: ctx.pd.name, budget: ctx.pd.budget, date: ctx.pd.date });
   });
 }
@@ -1417,7 +1434,7 @@ $('#code-form').addEventListener('submit', function(e){
   var t = decodeTag($('#code-input').value);
   if (!t){ $('#code-error').textContent = 'That code doesn’t look right. Copy the whole code from your message, starting with santa-, and try again.'; $('#code-input').focus(); return; }
   $('#code-error').textContent = '';
-  openReveal(t);
+  markGuest(); openReveal(t);
 });
 document.addEventListener('submit', function(e){
   if (e.target && e.target.id === 'pin-form'){ e.preventDefault(); submitPin(); return; }
@@ -1467,7 +1484,7 @@ function route(){
   var h = location.hash || '';
   if (/^#santa-/i.test(h)){
     var t = decodeTag(h);
-    if (t){ openReveal(t); return; }
+    if (t){ markGuest(); openReveal(t); return; }
     $('#code-input').value = h.slice(1);
     $('#code-error').textContent = 'That link looks cut off. Copy the whole code from your message and paste it here.';
     show('code'); return;
